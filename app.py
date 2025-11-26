@@ -6,14 +6,12 @@ import base64
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-
 import requests
 import pytz
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-
 from flask import (
     Flask,
     render_template,
@@ -23,6 +21,13 @@ from flask import (
     url_for
 )
 from functools import wraps
+
+# ------------------------
+# LOGGING SETUP
+# ------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # ------------------------
 # PASSWORD PROTECTION
 # ------------------------
@@ -38,15 +43,15 @@ app.secret_key = "super_secret_key_change_this"
 # CONFIG
 # ------------------------
 SPREADSHEET_ID = "1St20jgiYOGlCKkweGo69D4hurzgV-9w4wJHnuad0QJ4"
-
 SHEET_IB = "Assignment Name"
 SHEET_KVS = "Assignment Name KVS"
 SHEET_CAPF = "Assignment Name CAPF AC"
 SHEET_CBSE = "Assignment Name CBSE Superintendent"
-
 USER_DETAILS_SHEET = "User Details"
 DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
-GEMINI_API_KEY = "AIzaSyB1LSZKrw58LdLP1kkSVubWU2JNLi9ubNY"
+
+# Gemini API Configuration (from Google AI Studio - aistudio.google.com)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAXtce4vfFinpvn1YreCwlwF88FVOFrIWg")
 GEMINI_MODEL = "gemini-2.0-flash"
 
 # ------------------------
@@ -96,6 +101,7 @@ SERVICE_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
+
 service_creds = Credentials.from_service_account_info(
     SERVICE_ACCOUNT_INFO, scopes=SERVICE_SCOPES
 )
@@ -113,29 +119,25 @@ CATEGORY_SHEETS = {
 # HELPERS
 # ------------------------
 def login_required(view_func):
-    @wraps(view_func)   # ← WRAPS FIX APPLIED HERE
+    @wraps(view_func)
     def wrapper(*args, **kwargs):
         if "logged_in" not in session:
             return redirect(url_for("login"))
         return view_func(*args, **kwargs)
     return wrapper
 
-
 def get_worksheet(name):
     sh = gspread_client.open_by_key(SPREADSHEET_ID)
     return sh.worksheet(name)
-
 
 def list_assignments_from_sheet(sheet_name):
     ws = get_worksheet(sheet_name)
     rows = ws.get_all_values()
     return [row[0].strip() for row in rows[1:] if row and row[0].strip()]
 
-
 def append_user_details_row(values):
     ws = get_worksheet(USER_DETAILS_SHEET)
     ws.append_row(values, value_input_option="RAW")
-
 
 def get_assignment_all(sheet_name, assignment_name):
     ws = get_worksheet(sheet_name)
@@ -145,58 +147,74 @@ def get_assignment_all(sheet_name, assignment_name):
             return row[1], row[2], row[3], row[4], row[5], row[6]
     return "", "", "", "", "", ""
 
-
 def upload_to_drive(file_path: Path, filename: str) -> str:
     media = MediaFileUpload(str(file_path), resumable=False)
     metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
-
     created = drive_service.files().create(
         body=metadata,
         media_body=media,
         fields="id",
         supportsAllDrives=True
     ).execute()
-
     drive_service.permissions().create(
         fileId=created["id"],
         body={"role": "reader", "type": "anyone"},
         fields="id",
         supportsAllDrives=True
     ).execute()
-
     return f"https://drive.google.com/file/d/{created['id']}/view"
 
-
 def extract_text_with_gemini(path, is_pdf):
+    """Extract text from PDF or image using Gemini API."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-
-    with open(path, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
-
-    mime = "application/pdf" if is_pdf else mimetypes.guess_type(path)[0] or "image/jpeg"
-
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"inline_data": {"mime_type": mime, "data": data}},
-                    {"text": "Extract all text exactly as written."}
-                ]
-            }
-        ]
-    }
-
-    res = requests.post(url, json=payload)
-    res.raise_for_status()
+    
     try:
-        return res.json()["candidates"][0]["content"]["parts"][0]["text"]
-    except:
-        return ""
-
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        
+        mime = "application/pdf" if is_pdf else mimetypes.guess_type(path)[0] or "image/jpeg"
+        
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"inline_data": {"mime_type": mime, "data": data}},
+                        {"text": "Extract all text exactly as written from this document."}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 8192
+            }
+        }
+        
+        logger.info(f"Calling Gemini API for text extraction with model: {GEMINI_MODEL}")
+        res = requests.post(url, json=payload, timeout=60)
+        
+        logger.info(f"Gemini API status code: {res.status_code}")
+        
+        if res.status_code == 403:
+            logger.error(f"403 Forbidden error. Response: {res.text}")
+            return "[Error: API access forbidden. Please check your API key at aistudio.google.com]"
+        
+        res.raise_for_status()
+        
+        response_json = res.json()
+        return response_json["candidates"][0]["content"]["parts"][0]["text"]
+        
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error during text extraction: {e}")
+        logger.error(f"Response content: {e.response.text if hasattr(e, 'response') else 'No response'}")
+        return f"[Error extracting text: {str(e)}]"
+    except Exception as e:
+        logger.error(f"Unexpected error during text extraction: {e}")
+        return f"[Error: {str(e)}]"
 
 def evaluate_answer_with_gemini(prompt, question, model, answer):
+    """Evaluate student answer using Gemini API."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-
+    
     final_prompt = f"""
 RUBRIC:
 {prompt}
@@ -207,23 +225,52 @@ QUESTION:
 MODEL ANSWER:
 {model}
 
-STUDENT:
+STUDENT ANSWER:
 {answer}
 
-Evaluate strictly based on rubric.
+Evaluate the student's answer strictly based on the rubric provided. Provide detailed feedback on strengths and areas for improvement.
 """
-
-    payload = {"contents": [{"parts": [{"text": final_prompt}]}]}
-
-    res = requests.post(url, json=payload)
-    res.raise_for_status()
-
-    return res.json()["candidates"][0]["content"]["parts"][0]["text"]
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": final_prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 2048
+        }
+    }
+    
+    try:
+        logger.info(f"Calling Gemini API for evaluation with model: {GEMINI_MODEL}")
+        res = requests.post(url, json=payload, timeout=60)
+        
+        logger.info(f"Gemini API status code: {res.status_code}")
+        
+        if res.status_code == 403:
+            logger.error(f"403 Forbidden error. Response: {res.text}")
+            return "Error: Unable to evaluate answer. API access forbidden. Please generate a new API key at aistudio.google.com"
+        
+        res.raise_for_status()
+        
+        response_json = res.json()
+        return response_json["candidates"][0]["content"]["parts"][0]["text"]
+        
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error during evaluation: {e}")
+        logger.error(f"Response content: {e.response.text if hasattr(e, 'response') else 'No response'}")
+        return f"Error evaluating answer: {str(e)}. Please try again or contact administrator."
+    except Exception as e:
+        logger.error(f"Unexpected error during evaluation: {e}")
+        return f"Error: {str(e)}"
 
 # ------------------------
 # ROUTES
 # ------------------------
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -234,7 +281,6 @@ def login():
         return render_template("login.html", error="Invalid password.")
     return render_template("login.html")
 
-
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
@@ -244,10 +290,8 @@ def index():
         email = request.form["email"]
         category = request.form["category"]
         language = request.form["language"]
-
         sheet_name = CATEGORY_SHEETS[category]
         assignments = list_assignments_from_sheet(sheet_name)
-
         return render_template(
             "upload.html",
             name=name,
@@ -257,9 +301,7 @@ def index():
             language=language,
             assignments=assignments,
         )
-
     return render_template("index.html")
-
 
 @app.route("/submit", methods=["POST"])
 @login_required
@@ -271,43 +313,62 @@ def submit_assignment():
     language = request.form["language"]
     assignment = request.form["assignment"]
     file = request.files["file"]
-
     filename = file.filename
+    
     path = os.path.join(tempfile.gettempdir(), f"{int(time.time())}_{filename}")
     file.save(path)
-
-    # Upload to Drive
-    safe_name = name.replace(" ", "_")
-    drive_filename = f"{safe_name}_{datetime.now().strftime('%d-%m-%y_%H-%M-%S')}{os.path.splitext(filename)[1]}"
-    drive_link = upload_to_drive(Path(path), drive_filename)
-
-    append_user_details_row([
-        name, mobile, email, assignment, drive_link, "-", datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-    ])
-
-    # OCR
-    extracted = extract_text_with_gemini(path, filename.lower().endswith(".pdf"))
-    if not extracted:
-        extracted = "[No text extracted]"
-
-    # Get assignment data
-    p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(CATEGORY_SHEETS[category], assignment)
-
-    if language == "ENG":
-        prompt = p_en; question = q_en; model = m_en
-    else:
-        prompt = p_hi; question = q_hi; model = m_hi
-
-    feedback = evaluate_answer_with_gemini(prompt, question, model, extracted)
-
-    return render_template(
-        "result.html",
-        name=name,
-        assignment=assignment,
-        drive_link=drive_link,
-        feedback=feedback,
-    )
-
+    
+    try:
+        # Upload to Drive
+        safe_name = name.replace(" ", "_")
+        drive_filename = f"{safe_name}_{datetime.now().strftime('%d-%m-%y_%H-%M-%S')}{os.path.splitext(filename)[1]}"
+        drive_link = upload_to_drive(Path(path), drive_filename)
+        
+        # Log to sheet
+        append_user_details_row([
+            name, mobile, email, assignment, drive_link, "-", 
+            datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        ])
+        
+        # OCR with Gemini
+        extracted = extract_text_with_gemini(path, filename.lower().endswith(".pdf"))
+        if not extracted or extracted.startswith("[Error"):
+            logger.warning(f"Text extraction failed or returned error: {extracted}")
+            extracted = "[No text extracted - please check the file quality]"
+        
+        # Get assignment data
+        p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(
+            CATEGORY_SHEETS[category], assignment
+        )
+        
+        if language == "ENG":
+            prompt = p_en
+            question = q_en
+            model = m_en
+        else:
+            prompt = p_hi
+            question = q_hi
+            model = m_hi
+        
+        # Evaluate with Gemini
+        feedback = evaluate_answer_with_gemini(prompt, question, model, extracted)
+        
+        return render_template(
+            "result.html",
+            name=name,
+            assignment=assignment,
+            drive_link=drive_link,
+            feedback=feedback,
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing submission: {e}")
+        return f"An error occurred: {str(e)}", 500
+    finally:
+        try:
+            os.remove(path)
+        except:
+            pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
