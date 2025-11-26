@@ -1,36 +1,61 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Upload Answer Sheet</title>
+    <title>Upload Assignment</title>
 </head>
 <body>
+    <h2>Upload Assignment</h2>
 
-<h1>Upload Your Answer Sheet</h1>
+    <p><b>Name:</b> {{ name }}</p>
+    <p><b>Mobile:</b> {{ mobile }}</p>
+    <p><b>Email:</b> {{ email }}</p>
+    <p><b>Category:</b> {{ category }}</p>
+    <p><b>Language:</b> {{ language }}</p>
 
-<form method="post" action="/submit" enctype="multipart/form-data">
+    <!-- STEP 1: Assignment selection form -->
+    <form method="POST" action="{{ url_for('index') }}">
+        <!-- Keep user details so we can reuse them -->
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="mobile" value="{{ mobile }}">
+        <input type="hidden" name="email" value="{{ email }}">
+        <input type="hidden" name="category" value="{{ category }}">
+        <input type="hidden" name="language" value="{{ language }}">
 
-    <input type="hidden" name="name" value="{{ name }}">
-    <input type="hidden" name="mobile" value="{{ mobile }}">
-    <input type="hidden" name="email" value="{{ email }}">
-    <input type="hidden" name="category" value="{{ category }}">
-    <input type="hidden" name="language" value="{{ language }}">
+        <label for="assignment_select">Select Assignment:</label>
+        <select name="assignment_select" id="assignment_select" onchange="this.form.submit()">
+            <option value="">-- Select Assignment --</option>
+            {% for a in assignments %}
+            <option value="{{ a }}" {% if selected_assignment == a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </form>
 
-    <label>Select Assignment:</label><br>
-    <select name="assignment" required>
-        <option value="">-- Select Assignment --</option>
-        {% for a in assignments %}
-        <option value="{{ a }}">{{ a }}</option>
-        {% endfor %}
-    </select>
-    <br><br>
+    <hr>
 
-    <label>Upload File:</label><br>
-    <input type="file" name="file" accept=".pdf,image/*" required><br><br>
+    <!-- STEP 2: Show question after assignment selected -->
+    {% if question_display %}
+    <div style="border:1px solid #ccc; padding:10px; margin-bottom:20px;">
+        <h3>📘 Question:</h3>
+        <pre style="white-space:pre-wrap;">{{ question_display }}</pre>
+    </div>
+    {% endif %}
 
-    <button type="submit">Submit & Evaluate</button>
+    <!-- STEP 3: Show upload form only after assignment is chosen -->
+    {% if selected_assignment %}
+    <form action="{{ url_for('submit_assignment') }}" method="POST" enctype="multipart/form-data">
+        <!-- Pass all required data to /submit -->
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="mobile" value="{{ mobile }}">
+        <input type="hidden" name="email" value="{{ email }}">
+        <input type="hidden" name="category" value="{{ category }}">
+        <input type="hidden" name="language" value="{{ language }}">
+        <input type="hidden" name="assignment" value="{{ selected_assignment }}">
 
-</form>
+        <label for="file">Upload your answer (PDF or Image):</label>
+        <input type="file" name="file" id="file" required>
 
+        <button type="submit">Submit Assignment</button>
+    </form>
+    {% endif %}
 </body>
 </html>
