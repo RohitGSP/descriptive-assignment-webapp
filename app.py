@@ -304,7 +304,24 @@ def index():
         category = request.form["category"]
         language = request.form["language"]
         sheet_name = CATEGORY_SHEETS[category]
+
+        # Get all assignments for this sheet/category
         assignments = list_assignments_from_sheet(sheet_name)
+
+        # Check if an assignment was selected in this POST
+        selected_assignment = request.form.get("assignment_select")
+        question_display = None
+
+        if selected_assignment:
+            # Fetch full assignment details from sheet
+            p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(sheet_name, selected_assignment)
+
+            # Pick language-specific question (like old code)
+            if language == "ENG":
+                question_display = q_en
+            else:
+                question_display = q_hi
+
         return render_template(
             "upload.html",
             name=name,
@@ -313,7 +330,11 @@ def index():
             category=category,
             language=language,
             assignments=assignments,
+            selected_assignment=selected_assignment,
+            question_display=question_display
         )
+
+    # First visit → show basic form
     return render_template("index.html")
 
 @app.route("/submit", methods=["POST"])
