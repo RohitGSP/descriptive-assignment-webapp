@@ -206,7 +206,7 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        resp = requests.post(url, headers=headers, json=payload, timeout=20)
         resp.raise_for_status()
         result = resp.json()
         content = (
@@ -267,7 +267,7 @@ IMPORTANT:
 
     # RETRY MECHANISM — avoids 429 errors
     max_attempts = 5
-    backoff_seconds = [2, 4, 6, 8, 10]   # exponential delays
+    backoff_seconds = [1, 2, 3]   # exponential delays
 
     for attempt in range(max_attempts):
         try:
