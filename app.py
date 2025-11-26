@@ -22,7 +22,7 @@ from flask import (
     session,
     url_for
 )
-
+from functools import wraps
 # ------------------------
 # PASSWORD PROTECTION
 # ------------------------
@@ -114,6 +114,7 @@ CATEGORY_SHEETS = {
 # HELPERS
 # ------------------------
 def login_required(view_func):
+    @wraps(view_func)   # ← WRAPS FIX APPLIED HERE
     def wrapper(*args, **kwargs):
         if "logged_in" not in session:
             return redirect(url_for("login"))
