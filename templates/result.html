@@ -3,29 +3,92 @@
 <head>
     <meta charset="utf-8">
     <title>Evaluation Result</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #1f4037, #99f2c8);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 25px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(255,255,255,0.15);
+            padding: 35px 40px;
+            border-radius: 25px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+
+        h1 {
+            font-size: 34px;
+            font-weight: 900;
+            text-align: center;
+            color: white;
+            margin-bottom: 10px;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.7);
+        }
+
+        .info-box {
+            background: rgba(0, 0, 0, 0.25);
+            padding: 12px 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .feedback {
+            background: rgba(255,255,255,0.18);
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+            color: #fff;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+
+        .link-box {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        a {
+            color: #ffeb3b;
+            font-weight: 600;
+            font-size: 16px;
+        }
+    </style>
+
 </head>
 <body>
 
-<h1>Evaluation Result</h1>
+<div class="container">
 
-<p><strong>Name:</strong> {{ name }}</p>
-<p><strong>Assignment:</strong> {{ assignment }}</p>
-<p><strong>Uploaded file:</strong> 
-   <a href="{{ drive_link }}" target="_blank">View in Drive</a>
-</p>
+    <h1>Evaluation Result</h1>
 
-<h2>Feedback</h2>
+    <div class="info-box">
+        <b>Name:</b> {{ name }}<br>
+        <b>Assignment:</b> {{ assignment }}
+    </div>
 
-<pre style="white-space: pre-wrap; border:1px solid #ccc; padding:10px;">
-{{ feedback }}
-</pre>
+    <div class="link-box">
+        <b>Drive File:</b> <a href="{{ drive_link }}" target="_blank">Open Uploaded File</a>
+    </div>
 
-<a href="data:text/plain;charset=utf-8,{{ feedback|urlencode }}" download="feedback.txt">
-    Download Feedback (.txt)
-</a>
+    <h3 style="color:#ffe600; margin-top:25px;">Feedback & Score:</h3>
 
-<br><br>
-<a href="/">Submit Another</a>
+    <div class="feedback">{{ feedback }}</div>
+
+</div>
 
 </body>
 </html>
