@@ -45,7 +45,7 @@ SHEET_CAPF = "Assignment Name CAPF AC"
 SHEET_CBSE = "Assignment Name CBSE Superintendent"
 
 USER_DETAILS_SHEET = "User Details"
-DRIVE_FOLDER_ID = "0AE1AEmyNP9-jUk9PVA"
+DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
 GEMINI_API_KEY = "AIzaSyB1LSZKrw58LdLP1kkSVubWU2JNLi9ubNY"
 GEMINI_MODEL = "gemini-2.0-flash"
 
@@ -151,12 +151,17 @@ def upload_to_drive(file_path: Path, filename: str) -> str:
     metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
 
     created = drive_service.files().create(
-        body=metadata, media_body=media, fields="id"
+        body=metadata,
+        media_body=media,
+        fields="id",
+        supportsAllDrives=True
     ).execute()
 
     drive_service.permissions().create(
         fileId=created["id"],
-        body={"role": "reader", "type": "anyone"}
+        body={"role": "reader", "type": "anyone"},
+        fields="id",
+        supportsAllDrives=True
     ).execute()
 
     return f"https://drive.google.com/file/d/{created['id']}/view"
