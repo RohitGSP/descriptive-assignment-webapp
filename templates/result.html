@@ -86,7 +86,26 @@
 
     <h3 style="color:#ffe600; margin-top:25px;">Feedback & Score:</h3>
 
-    <div class="feedback">{{ feedback }}</div>
+<div class="feedback">{{ feedback }}</div>
+
+<!-- Download Feedback File -->
+<div style="margin-top: 25px; text-align: center;">
+    <a href="data:text/plain;charset=utf-8,{{ feedback | urlencode }}" 
+       download="feedback.txt"
+       style="display:inline-block; padding:12px 20px; background:#ffcc00; color:#000; 
+              font-weight:600; border-radius:10px; text-decoration:none; transition:0.3s;">
+        ⬇ Download Feedback (.txt)
+    </a>
+</div>
+
+<!-- Submit Another Assignment -->
+<div style="margin-top: 20px; text-align:center;">
+    <a href="/" 
+       style="display:inline-block; padding:12px 20px; background:#ffffff33; 
+              color:#fff; border-radius:10px; text-decoration:none; font-weight:600;">
+        ➕ Submit Another Assignment
+    </a>
+</div>
 
 </div>
 
