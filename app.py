@@ -52,7 +52,7 @@ DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
 
 # Gemini API Configuration (from Google AI Studio - aistudio.google.com)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAXtce4vfFinpvn1YreCwlwF88FVOFrIWg")
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 # ------------------------
 # SERVICE ACCOUNT
@@ -164,160 +164,109 @@ def upload_to_drive(file_path: Path, filename: str) -> str:
     ).execute()
     return f"https://drive.google.com/file/d/{created['id']}/view"
 
-# ------------------------
-# GEMINI OCR
-# ------------------------
-def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
-    headers = {"Content-Type": "application/json"}
+def extract_text_with_gemini(path, is_pdf):
+    """Extract text from PDF or image using Gemini API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    
+    try:
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        
+        mime = "application/pdf" if is_pdf else mimetypes.guess_type(path)[0] or "image/jpeg"
+        
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"inline_data": {"mime_type": mime, "data": data}},
+                        {"text": "Extract all text exactly as written from this document."}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 8192
+            }
+        }
+        
+        logger.info(f"Calling Gemini API for text extraction with model: {GEMINI_MODEL}")
+        res = requests.post(url, json=payload, timeout=60)
+        
+        logger.info(f"Gemini API status code: {res.status_code}")
+        
+        if res.status_code == 403:
+            logger.error(f"403 Forbidden error. Response: {res.text}")
+            return "[Error: API access forbidden. Please check your API key at aistudio.google.com]"
+        
+        res.raise_for_status()
+        
+        response_json = res.json()
+        return response_json["candidates"][0]["content"]["parts"][0]["text"]
+        
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error during text extraction: {e}")
+        logger.error(f"Response content: {e.response.text if hasattr(e, 'response') else 'No response'}")
+        return f"[Error extracting text: {str(e)}]"
+    except Exception as e:
+        logger.error(f"Unexpected error during text extraction: {e}")
+        return f"[Error: {str(e)}]"
 
-    with open(file_path, "rb") as f:
-        file_data = base64.standard_b64encode(f.read()).decode("utf-8")
+def evaluate_answer_with_gemini(prompt, question, model, answer):
+    """Evaluate student answer using Gemini API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    
+    final_prompt = f"""
+RUBRIC:
+{prompt}
 
-    mime_type = "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
+QUESTION:
+{question}
 
-    ocr_prompt = (
-        "Extract ALL text from this document/image exactly as written. "
-        "This is a handwritten answer sheet. Preserve the original structure, "
-        "paragraphs, and formatting as much as possible. "
-        "If there are any diagrams or drawings, describe them briefly. "
-        "Output only the extracted text, nothing else."
-    )
+MODEL ANSWER:
+{model}
 
+STUDENT ANSWER:
+{answer}
+
+Evaluate the student's answer strictly based on the rubric provided. Provide detailed feedback on strengths and areas for improvement.
+"""
+    
     payload = {
         "contents": [
             {
                 "parts": [
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": file_data
-                        }
-                    },
-                    {
-                        "text": ocr_prompt
-                    }
+                    {"text": final_prompt}
                 ]
             }
-        ]
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 2048
+        }
     }
-
+    
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=20)
-        resp.raise_for_status()
-        result = resp.json()
-        content = (
-            result.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-        )
-        if not content:
-            logger.error("Gemini OCR returned empty content: %s", result)
-            return ""
-        return content.strip()
+        logger.info(f"Calling Gemini API for evaluation with model: {GEMINI_MODEL}")
+        res = requests.post(url, json=payload, timeout=60)
+        
+        logger.info(f"Gemini API status code: {res.status_code}")
+        
+        if res.status_code == 403:
+            logger.error(f"403 Forbidden error. Response: {res.text}")
+            return "Error: Unable to evaluate answer. API access forbidden. Please generate a new API key at aistudio.google.com"
+        
+        res.raise_for_status()
+        
+        response_json = res.json()
+        return response_json["candidates"][0]["content"]["parts"][0]["text"]
+        
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error during evaluation: {e}")
+        logger.error(f"Response content: {e.response.text if hasattr(e, 'response') else 'No response'}")
+        return f"Error evaluating answer: {str(e)}. Please try again or contact administrator."
     except Exception as e:
-        logger.exception("Gemini OCR request failed: %s", e)
-        return ""
-
-def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
-    headers = {"Content-Type": "application/json"}
-
-    # 🔥 Corrected, strongly structured evaluation prompt
-    full_prompt = f"""
-You are an expert evaluator for Testbook. Your ONLY job is to evaluate the student's answer STRICTLY following the rubric.
-
-------------------------------------------
-RUBRIC (Use exactly these scoring criteria)
-------------------------------------------
-{prompt_text}
-
-------------------------------------------
-QUESTION STUDENT WAS ASKED
-------------------------------------------
-{question_text}
-
-------------------------------------------
-IDEAL MODEL ANSWER (Reference)
-------------------------------------------
-{model_answer_text}
-
-------------------------------------------
-STUDENT'S HANDWRITTEN ANSWER (OCR Output)
-------------------------------------------
-{answer_text}
-
-------------------------------------------
-YOUR EVALUATION TASK
-------------------------------------------
-1. Compare the STUDENT ANSWER with the MODEL ANSWER AND the QUESTION.
-2. Score the answer EXACTLY as per the rubric headings.
-3. Give scores for EACH item mentioned in the rubric.
-4. Write clear reasoning/explanation under each heading.
-5. At the end, give FINAL TOTAL SCORE out of **3.75**.
-
-------------------------------------------
-STRICT OUTPUT RULES (VERY IMPORTANT)
-------------------------------------------
-- DO NOT repeat the rubric.
-- DO NOT repeat the model answer.
-- DO NOT repeat the question.
-- DO NOT rewrite the student answer.
-- DO NOT add any extra headings.
-- DO NOT output JSON or Markdown.
-- ONLY output the evaluation and the scores in plain text.
-- Be strict but fair.
-"""
-
-    payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-
-    # Retry system
-    max_attempts = 5
-    backoff_seconds = [1, 2, 3]
-
-    for attempt in range(max_attempts):
-        try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=20)
-
-            # Handle rate limit
-            if resp.status_code == 429:
-                wait = backoff_seconds[min(attempt, len(backoff_seconds)-1)]
-                logger.warning(f"Gemini rate-limited. Retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-
-            resp.raise_for_status()
-
-            result = resp.json()
-
-            content = (
-                result.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-            )
-
-            if not content:
-                return "Error: Gemini returned an empty evaluation."
-
-            return content.strip()
-
-        except Exception as e:
-            logger.error(f"Gemini evaluation attempt {attempt+1} failed: {e}")
-            last_error = str(e)
-
-    return (
-        "Error: Gemini is temporarily overloaded or rate-limited.\n"
-        "Please try again.\n"
-        f"Details: {last_error}"
-    )
+        logger.error(f"Unexpected error during evaluation: {e}")
+        return f"Error: {str(e)}"
 
 # ------------------------
 # ROUTES
@@ -342,24 +291,7 @@ def index():
         category = request.form["category"]
         language = request.form["language"]
         sheet_name = CATEGORY_SHEETS[category]
-
-        # Get all assignments for this sheet/category
         assignments = list_assignments_from_sheet(sheet_name)
-
-        # Check if an assignment was selected in this POST
-        selected_assignment = request.form.get("assignment_select")
-        question_display = None
-
-        if selected_assignment:
-            # Fetch full assignment details from sheet
-            p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(sheet_name, selected_assignment)
-
-            # Pick language-specific question (like old code)
-            if language == "ENG":
-                question_display = q_en
-            else:
-                question_display = q_hi
-
         return render_template(
             "upload.html",
             name=name,
@@ -368,11 +300,7 @@ def index():
             category=category,
             language=language,
             assignments=assignments,
-            selected_assignment=selected_assignment,
-            question_display=question_display
         )
-
-    # First visit → show basic form
     return render_template("index.html")
 
 @app.route("/submit", methods=["POST"])
