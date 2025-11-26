@@ -223,13 +223,6 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
         logger.exception("Gemini OCR request failed: %s", e)
         return ""
 
-
-# ------------------------
-# GEMINI EVALUATION
-# ------------------------
-# ------------------------
-# GEMINI EVALUATION (Optimized with Retry & Rate Limit Handling)
-# ------------------------
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -237,52 +230,73 @@ def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, a
     )
     headers = {"Content-Type": "application/json"}
 
+    # 🔥 Corrected, strongly structured evaluation prompt
     full_prompt = f"""
-=== EVALUATION INSTRUCTIONS & RUBRIC ===
+You are an expert evaluator for Testbook. Your ONLY job is to evaluate the student's answer STRICTLY following the rubric.
+
+------------------------------------------
+RUBRIC (Use exactly these scoring criteria)
+------------------------------------------
 {prompt_text}
 
-=== QUESTION PROMPT (What student was asked) ===
+------------------------------------------
+QUESTION STUDENT WAS ASKED
+------------------------------------------
 {question_text}
 
-=== MODEL ANSWER (Ideal Reference Answer) ===
+------------------------------------------
+IDEAL MODEL ANSWER (Reference)
+------------------------------------------
 {model_answer_text}
 
-=== STUDENT'S SUBMITTED ANSWER (Extracted via OCR) ===
+------------------------------------------
+STUDENT'S HANDWRITTEN ANSWER (OCR Output)
+------------------------------------------
 {answer_text}
 
-=== FINAL INSTRUCTIONS ===
-Now evaluate the Student's Submitted Answer by:
-1. Comparing it against the Model Answer
-2. Checking if it properly answers the Question Prompt
-3. Applying the scoring rubric from the Evaluation Instructions
+------------------------------------------
+YOUR EVALUATION TASK
+------------------------------------------
+1. Compare the STUDENT ANSWER with the MODEL ANSWER AND the QUESTION.
+2. Score the answer EXACTLY as per the rubric headings.
+3. Give scores for EACH item mentioned in the rubric.
+4. Write clear reasoning/explanation under each heading.
+5. At the end, give FINAL TOTAL SCORE out of **3.75**.
 
-IMPORTANT:
-- Follow the OUTPUT FORMAT specified in the Evaluation Instructions EXACTLY
-- Do NOT use JSON format or markdown code blocks
-- Output plain text only in the exact format specified in the rubric
-- Be strict but fair in scoring
+------------------------------------------
+STRICT OUTPUT RULES (VERY IMPORTANT)
+------------------------------------------
+- DO NOT repeat the rubric.
+- DO NOT repeat the model answer.
+- DO NOT repeat the question.
+- DO NOT rewrite the student answer.
+- DO NOT add any extra headings.
+- DO NOT output JSON or Markdown.
+- ONLY output the evaluation and the scores in plain text.
+- Be strict but fair.
 """
 
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
 
-    # RETRY MECHANISM — avoids 429 errors
+    # Retry system
     max_attempts = 5
-    backoff_seconds = [1, 2, 3]   # exponential delays
+    backoff_seconds = [1, 2, 3]
 
     for attempt in range(max_attempts):
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=90)
+            resp = requests.post(url, headers=headers, json=payload, timeout=20)
 
-            # If rate-limited, wait and retry
+            # Handle rate limit
             if resp.status_code == 429:
                 wait = backoff_seconds[min(attempt, len(backoff_seconds)-1)]
-                logger.warning(f"Gemini rate-limited (429). Retrying in {wait}s...")
+                logger.warning(f"Gemini rate-limited. Retrying in {wait}s...")
                 time.sleep(wait)
                 continue
 
             resp.raise_for_status()
 
             result = resp.json()
+
             content = (
                 result.get("candidates", [{}])[0]
                 .get("content", {})
@@ -291,8 +305,7 @@ IMPORTANT:
             )
 
             if not content:
-                logger.error(f"Gemini returned empty content: {result}")
-                return "Error: Gemini returned empty evaluation response."
+                return "Error: Gemini returned an empty evaluation."
 
             return content.strip()
 
@@ -300,12 +313,12 @@ IMPORTANT:
             logger.error(f"Gemini evaluation attempt {attempt+1} failed: {e}")
             last_error = str(e)
 
-    # If all retries fail
     return (
         "Error: Gemini is temporarily overloaded or rate-limited.\n"
-        "Please try again in a few seconds.\n"
+        "Please try again.\n"
         f"Details: {last_error}"
     )
+
 # ------------------------
 # ROUTES
 # ------------------------
