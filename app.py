@@ -227,6 +227,9 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
 # ------------------------
 # GEMINI EVALUATION
 # ------------------------
+# ------------------------
+# GEMINI EVALUATION (Optimized with Retry & Rate Limit Handling)
+# ------------------------
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -260,27 +263,49 @@ IMPORTANT:
 - Be strict but fair in scoring
 """
 
-    payload = {
-        "contents": [{"parts": [{"text": full_prompt}]}]
-    }
+    payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
 
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=90)
-        resp.raise_for_status()
-        result = resp.json()
-        content = (
-            result.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-        )
-        if not content:
-            logger.error("Gemini evaluation returned empty: %s", result)
-            return "Error: Gemini returned empty response."
-        return content
-    except Exception as e:
-        logger.exception("Gemini evaluation failed: %s", e)
-        return "Error: Could not get feedback from AI service."
+    # RETRY MECHANISM — avoids 429 errors
+    max_attempts = 5
+    backoff_seconds = [2, 4, 6, 8, 10]   # exponential delays
+
+    for attempt in range(max_attempts):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=90)
+
+            # If rate-limited, wait and retry
+            if resp.status_code == 429:
+                wait = backoff_seconds[min(attempt, len(backoff_seconds)-1)]
+                logger.warning(f"Gemini rate-limited (429). Retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+
+            resp.raise_for_status()
+
+            result = resp.json()
+            content = (
+                result.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+            )
+
+            if not content:
+                logger.error(f"Gemini returned empty content: {result}")
+                return "Error: Gemini returned empty evaluation response."
+
+            return content.strip()
+
+        except Exception as e:
+            logger.error(f"Gemini evaluation attempt {attempt+1} failed: {e}")
+            last_error = str(e)
+
+    # If all retries fail
+    return (
+        "Error: Gemini is temporarily overloaded or rate-limited.\n"
+        "Please try again in a few seconds.\n"
+        f"Details: {last_error}"
+    )
 # ------------------------
 # ROUTES
 # ------------------------
