@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing Your Submission</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: #4CAF50;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            animation: scaleIn 0.5s ease;
+        }
+        
+        .success-icon::after {
+            content: "✓";
+            color: white;
+            font-size: 50px;
+            font-weight: bold;
+        }
+        
+        @keyframes scaleIn {
+            from {
+                transform: scale(0);
+            }
+            to {
+                transform: scale(1);
+            }
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .info-box {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .info-value {
+            color: #333;
+        }
+        
+        .status-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 25px 0;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status-text {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .queue-info {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .drive-link {
+            display: inline-block;
+            background: #4285f4;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 25px;
+            text-decoration: none;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        
+        .drive-link:hover {
+            background: #3367d6;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: white;
+            width: 0%;
+            animation: progress 3s ease-in-out infinite;
+        }
+        
+        @keyframes progress {
+            0%, 100% { width: 0%; }
+            50% { width: 100%; }
+        }
+        
+        .note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: left;
+            border-radius: 5px;
+            color: #856404;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon"></div>
+        
+        <h1>Submission Received!</h1>
+        <p class="subtitle">Your answer sheet has been uploaded successfully</p>
+        
+        <div class="info-box">
+            <div class="info-row">
+                <span class="info-label">Name:</span>
+                <span class="info-value">{{ name }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Assignment:</span>
+                <span class="info-value">{{ assignment }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Task ID:</span>
+                <span class="info-value">{{ task_id }}</span>
+            </div>
+        </div>
+        
+        <div class="status-box">
+            <div class="spinner"></div>
+            <div class="status-text" id="status-text">Processing your answer...</div>
+            <div class="queue-info" id="queue-info">
+                Queue Position: {{ queue_position }} | Estimated Time: {{ estimated_time }} seconds
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+        
+        <a href="{{ drive_link }}" target="_blank" class="drive-link">
+            📄 View Uploaded File
+        </a>
+        
+        <div class="note">
+            <strong>⏳ Please wait...</strong><br>
+            Your submission is being processed. This page will automatically update when evaluation is complete. 
+            Due to high demand, processing may take a few minutes.
+        </div>
+    </div>
+    
+    <script>
+        const taskId = "{{ task_id }}";
+        let checkCount = 0;
+        
+        function checkStatus() {
+            fetch('/status/' + taskId)
+                .then(response => response.json())
+                .then(data => {
+                    checkCount++;
+                    
+                    const statusText = document.getElementById('status-text');
+                    const queueInfo = document.getElementById('queue-info');
+                    
+                    if (data.status === 'completed') {
+                        statusText.textContent = '✓ Evaluation Complete!';
+                        queueInfo.textContent = 'Redirecting to results...';
+                        
+                        setTimeout(() => {
+                            window.location.href = '/result/' + taskId;
+                        }, 1500);
+                        
+                    } else if (data.status === 'error') {
+                        statusText.textContent = '✗ Processing Error';
+                        queueInfo.textContent = data.message || 'An error occurred';
+                        queueInfo.style.color = '#ff5252';
+                        
+                    } else if (data.status === 'processing') {
+                        statusText.textContent = '⚙️ Evaluating your answer...';
+                        queueInfo.textContent = data.message || 'Processing in progress';
+                        
+                    } else if (data.status === 'queued') {
+                        statusText.textContent = '⏳ In Queue';
+                        queueInfo.textContent = data.message || 'Waiting for processing';
+                    }
+                    
+                    // Log progress
+                    console.log('Status check #' + checkCount + ':', data.status);
+                })
+                .catch(error => {
+                    console.error('Status check failed:', error);
+                });
+        }
+        
+        // Check status every 3 seconds
+        const statusInterval = setInterval(checkStatus, 3000);
+        
+        // Initial check
+        checkStatus();
+        
+        // Stop checking after 10 minutes (just in case)
+        setTimeout(() => {
+            clearInterval(statusInterval);
+            document.getElementById('status-text').textContent = '⏰ Processing is taking longer than expected';
+            document.getElementById('queue-info').textContent = 'Please check back later or contact support';
+        }, 600000);
+    </script>
+</body>
+</html>
