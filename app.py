@@ -226,17 +226,22 @@ def upload_to_drive_safe(file_path: Path, filename: str) -> str:
 def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
     api_key = get_available_gemini_key()
 
-url = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent?key={api_key}"
-)
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={api_key}"
+    )
+
     headers = {"Content-Type": "application/json"}
-    
+
     with open(file_path, "rb") as f:
         file_data = base64.standard_b64encode(f.read()).decode("utf-8")
-    
-    mime_type = "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
-    
+
+    mime_type = (
+        "application/pdf"
+        if is_pdf
+        else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
+    )
+
     ocr_prompt = (
         "Extract ALL text from this document/image exactly as written. "
         "This is a handwritten answer sheet. Preserve the original structure, "
@@ -244,7 +249,7 @@ url = (
         "If there are any diagrams or drawings, describe them briefly. "
         "Output only the extracted text, nothing else."
     )
-    
+
     payload = {
         "contents": [
             {
@@ -252,32 +257,30 @@ url = (
                     {
                         "inline_data": {
                             "mime_type": mime_type,
-                            "data": file_data
+                            "data": file_data,
                         }
                     },
-                    {
-                        "text": ocr_prompt
-                    }
+                    {"text": ocr_prompt},
                 ]
             }
         ]
     }
-    
+
     resp = requests.post(url, headers=headers, json=payload, timeout=120)
     resp.raise_for_status()
     result = resp.json()
-    
+
     content = (
         result.get("candidates", [{}])[0]
         .get("content", {})
         .get("parts", [{}])[0]
         .get("text", "")
     )
-    
+
     if not content:
         logger.error("Gemini OCR returned empty content: %s", result)
         return ""
-    
+
     return content.strip()
 
 # ------------------------
