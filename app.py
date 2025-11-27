@@ -51,9 +51,8 @@ USER_DETAILS_SHEET = "User Details"
 DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
 
 # Gemini API Configuration (from Google AI Studio - aistudio.google.com)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAXtce4vfFinpvn1YreCwlwF88FVOFrIWg")
-GEMINI_MODEL = "gemini-2.0-flash"
-
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = "gemini-2.0"
 # ------------------------
 # SERVICE ACCOUNT
 # ------------------------
