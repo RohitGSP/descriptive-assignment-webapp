@@ -51,12 +51,8 @@
         }
         
         @keyframes scaleIn {
-            from {
-                transform: scale(0);
-            }
-            to {
-                transform: scale(1);
-            }
+            from { transform: scale(0); }
+            to { transform: scale(1); }
         }
         
         h1 {
@@ -205,9 +201,9 @@
         
         <div class="status-box">
             <div class="spinner"></div>
-            <div class="status-text" id="status-text">Processing your answer...</div>
-            <div class="queue-info" id="queue-info">
-                Queue Position: {{ queue_position }} | Estimated Time: {{ estimated_time }} seconds
+            <div class="status-text">Processing your answer...</div>
+            <div class="queue-info">
+                This will take only a moment.
             </div>
             <div class="progress-bar">
                 <div class="progress-fill"></div>
@@ -219,67 +215,18 @@
         </a>
         
         <div class="note">
-            <strong>⏳ Please wait...</strong><br>
-            Your submission is being processed. This page will automatically update when evaluation is complete. 
-            Due to high demand, processing may take a few minutes.
+            <strong>⏳ Just a moment...</strong><br>
+            Please wait while we prepare your evaluation. You will be redirected automatically.
         </div>
     </div>
     
     <script>
         const taskId = "{{ task_id }}";
-        let checkCount = 0;
-        
-        function checkStatus() {
-            fetch('/status/' + taskId)
-                .then(response => response.json())
-                .then(data => {
-                    checkCount++;
-                    
-                    const statusText = document.getElementById('status-text');
-                    const queueInfo = document.getElementById('queue-info');
-                    
-                    if (data.status === 'completed') {
-                        statusText.textContent = '✓ Evaluation Complete!';
-                        queueInfo.textContent = 'Redirecting to results...';
-                        
-                        setTimeout(() => {
-                            window.location.href = '/result/' + taskId;
-                        }, 1500);
-                        
-                    } else if (data.status === 'error') {
-                        statusText.textContent = '✗ Processing Error';
-                        queueInfo.textContent = data.message || 'An error occurred';
-                        queueInfo.style.color = '#ff5252';
-                        
-                    } else if (data.status === 'processing') {
-                        statusText.textContent = '⚙️ Evaluating your answer...';
-                        queueInfo.textContent = data.message || 'Processing in progress';
-                        
-                    } else if (data.status === 'queued') {
-                        statusText.textContent = '⏳ In Queue';
-                        queueInfo.textContent = data.message || 'Waiting for processing';
-                    }
-                    
-                    // Log progress
-                    console.log('Status check #' + checkCount + ':', data.status);
-                })
-                .catch(error => {
-                    console.error('Status check failed:', error);
-                });
-        }
-        
-        // Check status every 3 seconds
-        const statusInterval = setInterval(checkStatus, 3000);
-        
-        // Initial check
-        checkStatus();
-        
-        // Stop checking after 10 minutes (just in case)
+
+        // Always show page for minimum 2 seconds
         setTimeout(() => {
-            clearInterval(statusInterval);
-            document.getElementById('status-text').textContent = '⏰ Processing is taking longer than expected';
-            document.getElementById('queue-info').textContent = 'Please check back later or contact support';
-        }, 600000);
+            window.location.href = "/result/" + taskId;
+        }, 2000);
     </script>
 </body>
 </html>
