@@ -49,9 +49,24 @@ SHEET_CBSE = "Assignment Name CBSE Superintendent"
 USER_DETAILS_SHEET = "User Details"
 DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
 
-# Gemini API Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# MULTIPLE GEMINI API KEYS (AUTO-ROTATION)
+GEMINI_API_KEYS = [
+    os.getenv("GEMINI_API_KEY"),
+    os.getenv("GEMINI_API_KEY_2"),
+    os.getenv("GEMINI_API_KEY_3"),
+    os.getenv("GEMINI_API_KEY_4"),
+    os.getenv("GEMINI_API_KEY_5"),
+]
+
 GEMINI_MODEL = "gemini-2.0-flash"
+
+
+def get_available_gemini_key():
+    """Pick a random API key that is not empty."""
+    valid = [k for k in GEMINI_API_KEYS if k and k.strip()]
+    if not valid:
+        raise Exception("❌ No Gemini API keys found in Render ENV variables.")
+    return random.choice(valid)
 
 # ------------------------
 # SERVICE ACCOUNT
@@ -209,10 +224,12 @@ def upload_to_drive_safe(file_path: Path, filename: str) -> str:
 # ------------------------
 @retry_with_backoff(max_retries=5)
 def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
+    api_key = get_available_gemini_key()
+
+url = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_MODEL}:generateContent?key={api_key}"
+)
     headers = {"Content-Type": "application/json"}
     
     with open(file_path, "rb") as f:
@@ -268,10 +285,12 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
 # ------------------------
 @retry_with_backoff(max_retries=5)
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
+    api_key = get_available_gemini_key()
+
+url = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_MODEL}:generateContent?key={api_key}"
+)
     headers = {"Content-Type": "application/json"}
     
     full_prompt = f"""
