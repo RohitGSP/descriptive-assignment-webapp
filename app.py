@@ -290,12 +290,13 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
     api_key = get_available_gemini_key()
 
-url = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent?key={api_key}"
-)
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={api_key}"
+    )
+
     headers = {"Content-Type": "application/json"}
-    
+
     full_prompt = f"""
 === EVALUATION INSTRUCTIONS & RUBRIC ===
 {prompt_text}
@@ -321,28 +322,27 @@ IMPORTANT:
 - Output plain text only in the exact format specified in the rubric
 - Be strict but fair in scoring
 """
-    
+
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}]
     }
-    
+
     resp = requests.post(url, headers=headers, json=payload, timeout=90)
     resp.raise_for_status()
     result = resp.json()
-    
+
     content = (
         result.get("candidates", [{}])[0]
         .get("content", {})
         .get("parts", [{}])[0]
         .get("text", "")
     )
-    
+
     if not content:
         logger.error("Gemini evaluation returned empty: %s", result)
         return "Error: Gemini returned empty response."
-    
-    return content
 
+    return content
 # ------------------------
 # BACKGROUND QUEUE PROCESSOR
 # ------------------------
