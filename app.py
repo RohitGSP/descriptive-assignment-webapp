@@ -4,8 +4,13 @@ import tempfile
 import time
 import base64
 import mimetypes
+import queue
+import threading
+import random
 from datetime import datetime
 from pathlib import Path
+from functools import wraps
+
 import requests
 import pytz
 import gspread
@@ -13,14 +18,8 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from flask import (
-    Flask,
-    render_template,
-    request,
-    redirect,
-    session,
-    url_for
+    Flask, render_template, request, redirect, session, url_for, jsonify
 )
-from functools import wraps
 
 # ------------------------
 # LOGGING SETUP
@@ -50,9 +49,10 @@ SHEET_CBSE = "Assignment Name CBSE Superintendent"
 USER_DETAILS_SHEET = "User Details"
 DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
 
-# Gemini API Configuration (from Google AI Studio - aistudio.google.com)
+# Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-2.0-flash"
+
 # ------------------------
 # SERVICE ACCOUNT
 # ------------------------
@@ -115,6 +115,38 @@ CATEGORY_SHEETS = {
 }
 
 # ------------------------
+# QUEUE & RATE LIMITING SETUP
+# ------------------------
+gemini_queue = queue.Queue()
+drive_semaphore = threading.Semaphore(5)  # Max 5 concurrent Drive uploads
+task_results = {}  # Store results: {task_id: {status, data}}
+task_lock = threading.Lock()
+
+# ------------------------
+# RETRY DECORATOR WITH EXPONENTIAL BACKOFF
+# ------------------------
+def retry_with_backoff(max_retries=3):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "429" in str(e) or "quota" in error_msg or "rate" in error_msg:
+                        wait_time = (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"Rate limit hit, attempt {attempt+1}/{max_retries}, waiting {wait_time:.2f}s")
+                        time.sleep(wait_time)
+                        if attempt == max_retries - 1:
+                            raise
+                    else:
+                        raise
+            raise Exception("Max retries exceeded")
+        return wrapper
+    return decorator
+
+# ------------------------
 # HELPERS
 # ------------------------
 def login_required(view_func):
@@ -146,38 +178,48 @@ def get_assignment_all(sheet_name, assignment_name):
             return row[1], row[2], row[3], row[4], row[5], row[6]
     return "", "", "", "", "", ""
 
-def upload_to_drive(file_path: Path, filename: str) -> str:
-    media = MediaFileUpload(str(file_path), resumable=False)
-    metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
-    created = drive_service.files().create(
-        body=metadata,
-        media_body=media,
-        fields="id",
-        supportsAllDrives=True
-    ).execute()
-    drive_service.permissions().create(
-        fileId=created["id"],
-        body={"role": "reader", "type": "anyone"},
-        fields="id",
-        supportsAllDrives=True
-    ).execute()
-    return f"https://drive.google.com/file/d/{created['id']}/view"
+@retry_with_backoff(max_retries=3)
+def upload_to_drive_safe(file_path: Path, filename: str) -> str:
+    """Thread-safe Drive upload with semaphore and retry logic"""
+    with drive_semaphore:
+        try:
+            media = MediaFileUpload(str(file_path), resumable=False)
+            metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
+            created = drive_service.files().create(
+                body=metadata,
+                media_body=media,
+                fields="id",
+                supportsAllDrives=True
+            ).execute()
+            
+            drive_service.permissions().create(
+                fileId=created["id"],
+                body={"role": "reader", "type": "anyone"},
+                fields="id",
+                supportsAllDrives=True
+            ).execute()
+            
+            return f"https://drive.google.com/file/d/{created['id']}/view"
+        except Exception as e:
+            logger.error(f"Drive upload failed: {e}")
+            raise
 
 # ------------------------
-# GEMINI OCR
+# GEMINI OCR WITH RETRY
 # ------------------------
+@retry_with_backoff(max_retries=5)
 def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     )
     headers = {"Content-Type": "application/json"}
-
+    
     with open(file_path, "rb") as f:
         file_data = base64.standard_b64encode(f.read()).decode("utf-8")
-
+    
     mime_type = "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
-
+    
     ocr_prompt = (
         "Extract ALL text from this document/image exactly as written. "
         "This is a handwritten answer sheet. Preserve the original structure, "
@@ -185,7 +227,7 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
         "If there are any diagrams or drawings, describe them briefly. "
         "Output only the extracted text, nothing else."
     )
-
+    
     payload = {
         "contents": [
             {
@@ -203,36 +245,35 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
             }
         ]
     }
-
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
-        resp.raise_for_status()
-        result = resp.json()
-        content = (
-            result.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-        )
-        if not content:
-            logger.error("Gemini OCR returned empty content: %s", result)
-            return ""
-        return content.strip()
-    except Exception as e:
-        logger.exception("Gemini OCR request failed: %s", e)
+    
+    resp = requests.post(url, headers=headers, json=payload, timeout=120)
+    resp.raise_for_status()
+    result = resp.json()
+    
+    content = (
+        result.get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [{}])[0]
+        .get("text", "")
+    )
+    
+    if not content:
+        logger.error("Gemini OCR returned empty content: %s", result)
         return ""
-
+    
+    return content.strip()
 
 # ------------------------
-# GEMINI EVALUATION
+# GEMINI EVALUATION WITH RETRY
 # ------------------------
+@retry_with_backoff(max_retries=5)
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     )
     headers = {"Content-Type": "application/json"}
-
+    
     full_prompt = f"""
 === EVALUATION INSTRUCTIONS & RUBRIC ===
 {prompt_text}
@@ -258,28 +299,111 @@ IMPORTANT:
 - Output plain text only in the exact format specified in the rubric
 - Be strict but fair in scoring
 """
-
+    
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}]
     }
+    
+    resp = requests.post(url, headers=headers, json=payload, timeout=90)
+    resp.raise_for_status()
+    result = resp.json()
+    
+    content = (
+        result.get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [{}])[0]
+        .get("text", "")
+    )
+    
+    if not content:
+        logger.error("Gemini evaluation returned empty: %s", result)
+        return "Error: Gemini returned empty response."
+    
+    return content
 
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=90)
-        resp.raise_for_status()
-        result = resp.json()
-        content = (
-            result.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-        )
-        if not content:
-            logger.error("Gemini evaluation returned empty: %s", result)
-            return "Error: Gemini returned empty response."
-        return content
-    except Exception as e:
-        logger.exception("Gemini evaluation failed: %s", e)
-        return "Error: Could not get feedback from AI service."
+# ------------------------
+# BACKGROUND QUEUE PROCESSOR
+# ------------------------
+def process_gemini_queue():
+    """Background worker that processes Gemini requests with rate limiting"""
+    logger.info("Gemini queue processor started")
+    
+    while True:
+        try:
+            task = gemini_queue.get(timeout=1)
+            task_id = task['task_id']
+            
+            logger.info(f"Processing task {task_id}, queue size: {gemini_queue.qsize()}")
+            
+            # Update status to processing
+            with task_lock:
+                task_results[task_id] = {
+                    'status': 'processing',
+                    'message': 'Extracting text and evaluating answer...'
+                }
+            
+            try:
+                # Extract text
+                extracted = extract_text_with_gemini(
+                    task['file_path'], 
+                    task['is_pdf']
+                )
+                
+                if not extracted:
+                    extracted = "[No text extracted - please check the file quality]"
+                    logger.warning(f"Task {task_id}: Text extraction failed")
+                
+                # Evaluate answer
+                feedback = evaluate_answer_with_gemini(
+                    task['prompt'],
+                    task['question'],
+                    task['model'],
+                    extracted
+                )
+                
+                # Store result
+                with task_lock:
+                    task_results[task_id] = {
+                        'status': 'completed',
+                        'feedback': feedback,
+                        'name': task['name'],
+                        'assignment': task['assignment'],
+                        'drive_link': task['drive_link']
+                    }
+                
+                logger.info(f"Task {task_id} completed successfully")
+                
+            except Exception as e:
+                logger.error(f"Task {task_id} failed: {e}")
+                with task_lock:
+                    task_results[task_id] = {
+                        'status': 'error',
+                        'message': f'Processing failed: {str(e)}'
+                    }
+            
+            finally:
+                # Clean up temp file
+                try:
+                    if os.path.exists(task['file_path']):
+                        os.remove(task['file_path'])
+                except Exception as e:
+                    logger.error(f"Failed to delete temp file: {e}")
+            
+            # Rate limiting: Wait 12 seconds between requests (5 RPM = 1 request per 12 sec)
+            time.sleep(12)
+            
+            gemini_queue.task_done()
+            
+        except queue.Empty:
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"Queue processor error: {e}")
+            time.sleep(5)
+
+# Start background worker thread
+worker_thread = threading.Thread(target=process_gemini_queue, daemon=True)
+worker_thread.start()
+
 # ------------------------
 # ROUTES
 # ------------------------
@@ -302,25 +426,21 @@ def index():
         email = request.form["email"]
         category = request.form["category"]
         language = request.form["language"]
+        
         sheet_name = CATEGORY_SHEETS[category]
-
-        # Get all assignments for this sheet/category
         assignments = list_assignments_from_sheet(sheet_name)
-
-        # Check if an assignment was selected in this POST
+        
         selected_assignment = request.form.get("assignment_select")
         question_display = None
-
+        
         if selected_assignment:
-            # Fetch full assignment details from sheet
             p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(sheet_name, selected_assignment)
-
-            # Pick language-specific question (like old code)
+            
             if language == "ENG":
                 question_display = q_en
             else:
                 question_display = q_hi
-
+        
         return render_template(
             "upload.html",
             name=name,
@@ -332,8 +452,7 @@ def index():
             selected_assignment=selected_assignment,
             question_display=question_display
         )
-
-    # First visit → show basic form
+    
     return render_template("index.html")
 
 @app.route("/submit", methods=["POST"])
@@ -346,28 +465,27 @@ def submit_assignment():
     language = request.form["language"]
     assignment = request.form["assignment"]
     file = request.files["file"]
-    filename = file.filename
     
+    filename = file.filename
     path = os.path.join(tempfile.gettempdir(), f"{int(time.time())}_{filename}")
     file.save(path)
     
     try:
-        # Upload to Drive
+        # Upload to Drive (with retry and semaphore protection)
         safe_name = name.replace(" ", "_")
         drive_filename = f"{safe_name}_{datetime.now().strftime('%d-%m-%y_%H-%M-%S')}{os.path.splitext(filename)[1]}"
-        drive_link = upload_to_drive(Path(path), drive_filename)
+        drive_link = upload_to_drive_safe(Path(path), drive_filename)
         
-        # Log to sheet
+        # Log to Google Sheets
         append_user_details_row([
-            name, mobile, email, assignment, drive_link, "-", 
+            name,
+            mobile,
+            email,
+            assignment,
+            drive_link,
+            "Processing...",
             datetime.now().strftime("%d-%m-%Y %H:%M:%S")
         ])
-        
-        # OCR with Gemini
-        extracted = extract_text_with_gemini(path, filename.lower().endswith(".pdf"))
-        if not extracted or extracted.startswith("[Error"):
-            logger.warning(f"Text extraction failed or returned error: {extracted}")
-            extracted = "[No text extracted - please check the file quality]"
         
         # Get assignment data
         p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(
@@ -383,25 +501,83 @@ def submit_assignment():
             question = q_hi
             model = m_hi
         
-        # Evaluate with Gemini
-        feedback = evaluate_answer_with_gemini(prompt, question, model, extracted)
+        # Create unique task ID
+        task_id = f"{int(time.time())}_{name.replace(' ', '_')}"
+        
+        # Add task to queue
+        task = {
+            'task_id': task_id,
+            'file_path': path,
+            'is_pdf': filename.lower().endswith(".pdf"),
+            'prompt': prompt,
+            'question': question,
+            'model': model,
+            'name': name,
+            'assignment': assignment,
+            'drive_link': drive_link
+        }
+        
+        with task_lock:
+            task_results[task_id] = {
+                'status': 'queued',
+                'message': 'Your submission is in queue for processing'
+            }
+        
+        gemini_queue.put(task)
+        
+        queue_position = gemini_queue.qsize()
+        estimated_time = queue_position * 12  # 12 seconds per request
+        
+        logger.info(f"Task {task_id} added to queue. Position: {queue_position}")
         
         return render_template(
-            "result.html",
+            "queued.html",
             name=name,
             assignment=assignment,
             drive_link=drive_link,
-            feedback=feedback,
+            task_id=task_id,
+            queue_position=queue_position,
+            estimated_time=estimated_time
         )
         
     except Exception as e:
-        logger.error(f"Error processing submission: {e}")
-        return f"An error occurred: {str(e)}", 500
-    finally:
+        logger.error(f"Error in submit_assignment: {e}")
         try:
             os.remove(path)
         except:
             pass
+        return f"An error occurred: {str(e)}", 500
+
+@app.route("/status/<task_id>")
+@login_required
+def check_status(task_id):
+    """API endpoint to check task status"""
+    with task_lock:
+        result = task_results.get(task_id, {'status': 'not_found'})
+    return jsonify(result)
+
+@app.route("/result/<task_id>")
+@login_required
+def show_result(task_id):
+    """Display final result"""
+    with task_lock:
+        result = task_results.get(task_id)
+    
+    if not result:
+        return "Task not found", 404
+    
+    if result['status'] == 'completed':
+        return render_template(
+            "result.html",
+            name=result['name'],
+            assignment=result['assignment'],
+            drive_link=result['drive_link'],
+            feedback=result['feedback']
+        )
+    elif result['status'] == 'error':
+        return f"Error: {result.get('message', 'Unknown error')}", 500
+    else:
+        return redirect(url_for('check_status', task_id=task_id))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
