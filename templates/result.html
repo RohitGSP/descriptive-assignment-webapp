@@ -66,6 +66,38 @@
             font-weight: 600;
             font-size: 16px;
         }
+
+        /* Buttons */
+        .btn-download {
+            display:inline-block;
+            padding:12px 20px;
+            background:#ffcc00;
+            color:#000;
+            font-weight:600;
+            border-radius:10px;
+            text-decoration:none;
+            transition:0.3s;
+        }
+
+        .btn-download:hover {
+            background:#ffdb4d;
+        }
+
+        .btn-submit {
+            display:inline-block;
+            padding:12px 20px;
+            background:#ffffff55;
+            color:#fff;
+            border-radius:10px;
+            text-decoration:none;
+            font-weight:600;
+            margin-top: 15px;
+            transition:0.3s;
+        }
+
+        .btn-submit:hover {
+            background:#ffffff88;
+        }
     </style>
 
 </head>
@@ -86,28 +118,31 @@
 
     <h3 style="color:#ffe600; margin-top:25px;">Feedback & Score:</h3>
 
-<div class="feedback">{{ feedback }}</div>
+    <div class="feedback">{{ feedback }}</div>
 
-<!-- Download Feedback File -->
-<div style="margin-top: 25px; text-align: center;">
-    <a href="data:text/plain;charset=utf-8,{{ feedback | urlencode }}" 
-       download="feedback.txt"
-       style="display:inline-block; padding:12px 20px; background:#ffcc00; color:#000; 
-              font-weight:600; border-radius:10px; text-decoration:none; transition:0.3s;">
-        ⬇ Download Feedback (.txt)
-    </a>
-</div>
+    <!-- Safe Base64 Download -->
+    <div style="margin-top: 25px; text-align: center;">
+        <a id="downloadLink" class="btn-download" download="feedback.txt">
+            ⬇ Download Feedback (.txt)
+        </a>
+    </div>
 
-<!-- Submit Another Assignment -->
-<div style="margin-top: 20px; text-align:center;">
-    <a href="/" 
-       style="display:inline-block; padding:12px 20px; background:#ffffff33; 
-              color:#fff; border-radius:10px; text-decoration:none; font-weight:600;">
-        ➕ Submit Another Assignment
-    </a>
-</div>
+    <!-- Submit Another Assignment -->
+    <div style="margin-top: 20px; text-align:center;">
+        <a href="/" class="btn-submit">
+            ➕ Submit Another Assignment
+        </a>
+    </div>
 
 </div>
+
+<script>
+    // Generate Base64-safe text download
+    const feedback = `{{ feedback | replace('\n', '\\n') }}`;
+    const link = document.getElementById("downloadLink");
+    const base64Data = btoa(unescape(encodeURIComponent(feedback)));
+    link.href = "data:text/plain;base64," + base64Data;
+</script>
 
 </body>
 </html>
