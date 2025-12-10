@@ -210,123 +210,130 @@ def upload_to_drive_safe(file_path: Path, filename: str) -> str:
 # ------------------------
 # GEMINI OCR WITH RETRY
 # ------------------------
-@retry_with_backoff(max_retries=5)
 def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
-    api_key = get_available_gemini_key()
+    """Smart failover OCR: Try all Gemini keys one-by-one when 429 or failure occurs."""
 
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={api_key}"
-    )
-    headers = {"Content-Type": "application/json"}
+    last_error = None
 
     with open(file_path, "rb") as f:
         file_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    mime_type = "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
+    mime_type = (
+        "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
+    )
 
     ocr_prompt = (
         "Extract ALL text from this document/image exactly as written. "
-        "This is a handwritten answer sheet. Preserve the original structure, "
-        "paragraphs, and formatting as much as possible. "
-        "If there are any diagrams or drawings, describe them briefly. "
-        "Output only the extracted text, nothing else."
+        "This is a handwritten answer sheet. Preserve structure, paragraphs, formatting. "
+        "If diagrams appear, describe briefly. Output ONLY extracted text."
     )
 
     payload = {
         "contents": [
             {
                 "parts": [
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": file_data
-                        }
-                    },
-                    {
-                        "text": ocr_prompt
-                    }
+                    {"inline_data": {"mime_type": mime_type, "data": file_data}},
+                    {"text": ocr_prompt},
                 ]
             }
         ]
     }
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=120)
-    resp.raise_for_status()
-    result = resp.json()
+    for api_key in GEMINI_API_KEYS:
+        if not api_key:
+            continue
 
-    content = (
-        result.get("candidates", [{}])[0]
-        .get("content", {})
-        .get("parts", [{}])[0]
-        .get("text", "")
-    )
+        try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{GEMINI_MODEL}:generateContent?key={api_key}"
+            )
 
-    if not content:
-        logger.error("Gemini OCR returned empty content: %s", result)
-        return ""
+            resp = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=30)
 
-    return content.strip()
+            if resp.status_code == 429:
+                logger.warning(f"OCR rate-limited for key {api_key[:6]}..., trying next key.")
+                continue
+
+            resp.raise_for_status()
+
+            result = resp.json()
+            text = (
+                result.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+            )
+
+            return text.strip() if text else ""
+
+        except Exception as e:
+            last_error = e
+            logger.error(f"OCR key {api_key[:6]}... failed: {e}")
+            continue
+
+    raise Exception(f"All Gemini OCR keys failed. Last error: {last_error}")
 
 # ------------------------
 # GEMINI EVALUATION WITH RETRY
 # ------------------------
-@retry_with_backoff(max_retries=5)
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
-    api_key = get_available_gemini_key()
-
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={api_key}"
-    )
-    headers = {"Content-Type": "application/json"}
 
     full_prompt = f"""
 === EVALUATION INSTRUCTIONS & RUBRIC ===
 {prompt_text}
 
-=== QUESTION PROMPT (What student was asked) ===
+=== QUESTION PROMPT ===
 {question_text}
 
-=== MODEL ANSWER (Ideal Reference Answer) ===
+=== MODEL ANSWER ===
 {model_answer_text}
 
-=== STUDENT'S SUBMITTED ANSWER (Extracted via OCR) ===
+=== STUDENT ANSWER (OCR EXTRACTED) ===
 {answer_text}
 
-=== FINAL INSTRUCTIONS ===
-Now evaluate the Student's Submitted Answer by:
-1. Comparing it against the Model Answer
-2. Checking if it properly answers the Question Prompt
-3. Applying the scoring rubric from the Evaluation Instructions
-
-IMPORTANT:
-- Follow the OUTPUT FORMAT specified in the Evaluation Instructions EXACTLY
-- Do NOT use JSON format or markdown code blocks
-- Output plain text only in the exact format specified in the rubric
-- Be strict but fair in scoring
+Provide final evaluation EXACTLY in the required format.
+Plain text only.
 """
 
-    payload = {
-        "contents": [{"parts": [{"text": full_prompt}]}]
-    }
+    payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=90)
-    resp.raise_for_status()
-    result = resp.json()
+    last_error = None
 
-    content = (
-        result.get("candidates", [{}])[0]
-        .get("content", {})
-        .get("parts", [{}])[0]
-        .get("text", "")
-    )
+    for api_key in GEMINI_API_KEYS:
+        if not api_key:
+            continue
 
-    if not content:
-        logger.error("Gemini evaluation returned empty: %s", result)
-        return "Error: Gemini returned empty response."
+        try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{GEMINI_MODEL}:generateContent?key={api_key}"
+            )
 
-    return content
+            resp = requests.post(url, json=payload, timeout=30)
+
+            if resp.status_code == 429:
+                logger.warning(f"Evaluation rate-limited for key {api_key[:6]}..., trying next key.")
+                continue
+
+            resp.raise_for_status()
+
+            result = resp.json()
+            text = (
+                result.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+            )
+
+            return text if text else "Gemini returned empty evaluation."
+
+        except Exception as e:
+            last_error = e
+            logger.error(f"Evaluation key {api_key[:6]}... failed: {e}")
+            continue
+
+    raise Exception(f"All Gemini evaluation keys failed. Last error: {last_error}")
 
 # ------------------------
 # ROUTES
