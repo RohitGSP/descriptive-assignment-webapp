@@ -67,8 +67,6 @@ def get_available_gemini_key():
     if not valid:
         raise Exception("❌ No Gemini API keys found in Render ENV variables.")
     return random.choice(valid)
-
-
 # ------------------------
 # SERVICE ACCOUNT
 # ------------------------
@@ -78,9 +76,33 @@ SERVICE_ACCOUNT_INFO = {
     "private_key_id": "df1eb2fdbebf640ed6b67e4c4a7f3ca54e1ea0a0",
     "private_key": """-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC0pDssEpofp9Nr
-[... YOUR PRIVATE KEY CONTENT ...]
+dC4Ql7EL8dzawNVkqBRHNYHPHGI5MbieLEB2v4X9Vd0+609S7wkWoyGZaSeiiPRS
+hshVtMC+9cWLMKTiJ8YigLUTYBrrnc1i17m+1NlwiqmG+i5UEKHFC7nUXtOO8Ywc
+eP6fbIUO+hot4QJQRkyCML3wk93eF/E96R8Om7tg/5IP9nunyThpGXEuUd9RbwgZ
+OldDG3WlrkMqzIHEneBo9RTEZQ9Azo2GDBugjK76SoMD7H8HkEIYqGb4H9kdMjoU
+1dEPgG75G1EE5BMhOfolx2da0GXcrKI2u+fHfgVDzh1f+tV3Lzu0ZX+Mc8Lo6lDg
+LqAfwPfHAgMBAAECggEAB6MT28uI3uZMHPt8K79NJGX4l4iPMltjrPkHa0zkSfie
+480JQOMVqba4VCFgU4vjO8FiK1JFgWywEsHJ5st8BKFvRxt437/yZVNdlHDYVEuq
+5cDyEq4LIOPeiUe6y5PUNbFjRgmEgPwX3qCEBmlUgFXfxulVHRi1iQUWocQducwB
+hkUQc871DElb+bi7LtexOk/NB/pyjOUnDQmNzLD+7P0v02MOzYvIV0ykvh8wId+H
+Eu9v1x09aJCHTGw83qbyqYimxGbuNss7wiUbux6gNH4nf4iQU5BNpbxxvKOLigTg
+SKgx/cWbXQ2WIdipimVqpH8zuQ4HQ8t9k/7q57yupQKBgQD3txNy2Eb2RLQsQW7D
+Qa5cqgi18kUWBpv9ijzMS6Zdfv+GpOofYgaVDrwO3j0dtfjOptILV/uayqBhBjaB
+vfzyV0KFLq5pF1S0iQVpAziXG2ySv22BB+UaOfQj+t9b38QZByE4DDTscCXnnBTY
+Wg83jrILXPAZTxNCznDWSGRTtQKBgQC6rt/Z/XsXUbueG9R7wrYYcbPjpZeh3/TR
+BSs98Clm6fF1FbZoTd8Mm97fbEX4BltjnXi6Wgg8L3xRUnl603Xmpy90SLLSXyjM
+R8cYp51N0TzaLC6vaDbfhGV1sP85xpU9YNENWdilMLlCn+N6leI8i/xqQp82eRP0
+bQhoAwVDCwKBgF7KCYEqzYyzIZbFuxKwcX43+nlVKaaSBOLyIO20DQc9752gQY6c
+vhQPvVqbJBvYZEr/fuSkWD0VSGWYMQdYohBB38yC3m6MZPdob0+N0fvQnK1S3x4+
+3SY6Avg5qXrIl4tUNRvzX9UR3Q9RpJBddfE2g17hw2aL4bzwrjDxJqL5AoGALVno
+VbvHmG2pp4pZP0uZEy0kJ2yF/rQ6dEDONXjPhgnVN71zl7k7M4P2S86w3MUmlHef
+6Z2PnJdomxTvIBCY9tSsqZIzpvmpHp9dVbb6dvoaz2GmYcRueDRgtYuvJSkB/mwz
+vQuTnuXMS8wt5gzdbhoP0vymUwRs/ZczUJlTQOsCgYBRt8JJFdW1gETZkuW0YTFU
+3pJTBopj8Xd128Z89CNPJCzyUYE0MKbo/lSkPoHJp5+BqoOQ0qVLgqgGpwrb1wE/
+NwPfjn6wnaH3jhIE6MdftTkGxc6WOkYGHWuL4CGu2yt7GvbcZU+MAHVU+I3wE29X
 NsZM40giRjwq1uMmJKHaDQ==
------END PRIVATE KEY-----""",
+-----END PRIVATE KEY-----
+""",
     "client_email": "rohit-selections@sapient-depot-475407-n7.iam.gserviceaccount.com",
     "client_id": "105687692028458251141",
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
