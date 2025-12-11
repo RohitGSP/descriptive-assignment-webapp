@@ -55,7 +55,7 @@ GEMINI_API_KEYS = [
     os.getenv("GEMINI_API_KEY_5"),
 ]
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def get_available_gemini_key():
