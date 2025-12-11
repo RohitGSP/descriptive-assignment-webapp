@@ -114,8 +114,8 @@
         }
         
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
         
         .status-text {
@@ -202,17 +202,13 @@
         <div class="status-box">
             <div class="spinner"></div>
             <div class="status-text">Processing your answer...</div>
-            <div class="queue-info">
-                This will take only a moment.
-            </div>
+            <div class="queue-info">This will take only a moment.</div>
             <div class="progress-bar">
                 <div class="progress-fill"></div>
             </div>
         </div>
         
-        <a href="{{ drive_link }}" target="_blank" class="drive-link">
-            📄 View Uploaded File
-        </a>
+        <a href="{{ drive_link }}" target="_blank" class="drive-link">📄 View Uploaded File</a>
         
         <div class="note">
             <strong>⏳ Just a moment...</strong><br>
@@ -223,7 +219,7 @@
     <script>
         const taskId = "{{ task_id }}";
 
-        // Always show page for minimum 2 seconds
+        // Always display this screen for minimum 2 seconds
         setTimeout(() => {
             window.location.href = "/result/" + taskId;
         }, 2000);
