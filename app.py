@@ -36,6 +36,11 @@ app = Flask(__name__)
 app.secret_key = "super_secret_key_change_this"
 
 # ------------------------
+# SERVER-SIDE RESULT STORAGE (FIX FOR COOKIE OVERFLOW)
+# ------------------------
+RESULT_STORE = {}   # <— Fixes session overflow + 404 errors
+
+# ------------------------
 # CONFIG
 # ------------------------
 SPREADSHEET_ID = "1St20jgiYOGlCKkweGo69D4hurzgV-9w4wJHnuad0QJ4"
@@ -46,7 +51,6 @@ SHEET_CBSE = "Assignment Name CBSE Superintendent"
 USER_DETAILS_SHEET = "User Details"
 DRIVE_FOLDER_ID = "10ZtBLF_srBc_D0-XXXJynhPmwRMypSGi"
 
-# MULTIPLE GEMINI API KEYS (AUTO-ROTATION)
 GEMINI_API_KEYS = [
     os.getenv("GEMINI_API_KEY"),
     os.getenv("GEMINI_API_KEY_2"),
@@ -59,11 +63,11 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def get_available_gemini_key():
-    """Pick a random API key that is not empty."""
     valid = [k for k in GEMINI_API_KEYS if k and k.strip()]
     if not valid:
         raise Exception("❌ No Gemini API keys found in Render ENV variables.")
     return random.choice(valid)
+
 
 # ------------------------
 # SERVICE ACCOUNT
@@ -74,30 +78,7 @@ SERVICE_ACCOUNT_INFO = {
     "private_key_id": "df1eb2fdbebf640ed6b67e4c4a7f3ca54e1ea0a0",
     "private_key": """-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC0pDssEpofp9Nr
-dC4Ql7EL8dzawNVkqBRHNYHPHGI5MbieLEB2v4X9Vd0+609S7wkWoyGZaSeiiPRS
-hshVtMC+9cWLMKTiJ8YigLUTYBrrnc1i17m+1NlwiqmG+i5UEKHFC7nUXtOO8Ywc
-eP6fbIUO+hot4QJQRkyCML3wk93eF/E96R8Om7tg/5IP9nunyThpGXEuUd9RbwgZ
-OldDG3WlrkMqzIHEneBo9RTEZQ9Azo2GDBugjK76SoMD7H8HkEIYqGb4H9kdMjoU
-1dEPgG75G1EE5BMhOfolx2da0GXcrKI2u+fHfgVDzh1f+tV3Lzu0ZX+Mc8Lo6lDg
-LqAfwPfHAgMBAAECggEAB6MT28uI3uZMHPt8K79NJGX4l4iPMltjrPkHa0zkSfie
-480JQOMVqba4VCFgU4vjO8FiK1JFgWywEsHJ5st8BKFvRxt437/yZVNdlHDYVEuq
-5cDyEq4LIOPeiUe6y5PUNbFjRgmEgPwX3qCEBmlUgFXfxulVHRi1iQUWocQducwB
-hkUQc871DElb+bi7LtexOk/NB/pyjOUnDQmNzLD+7P0v02MOzYvIV0ykvh8wId+H
-Eu9v1x09aJCHTGw83qbyqYimxGbuNss7wiUbux6gNH4nf4iQU5BNpbxxvKOLigTg
-SKgx/cWbXQ2WIdipimVqpH8zuQ4HQ8t9k/7q57yupQKBgQD3txNy2Eb2RLQsQW7D
-Qa5cqgi18kUWBpv9ijzMS6Zdfv+GpOofYgaVDrwO3j0dtfjOptILV/uayqBhBjaB
-vfzyV0KFLq5pF1S0iQVpAziXG2ySv22BB+UaOfQj+t9b38QZByE4DDTscCXnnBTY
-Wg83jrILXPAZTxNCznDWSGRTtQKBgQC6rt/Z/XsXUbueG9R7wrYYcbPjpZeh3/TR
-BSs98Clm6fF1FbZoTd8Mm97fbEX4BltjnXi6Wgg8L3xRUnl603Xmpy90SLLSXyjM
-R8cYp51N0TzaLC6vaDbfhGV1sP85xpU9YNENWdilMLlCn+N6leI8i/xqQp82eRP0
-bQhoAwVDCwKBgF7KCYEqzYyzIZbFuxKwcX43+nlVKaaSBOLyIO20DQc9752gQY6c
-vhQPvVqbJBvYZEr/fuSkWD0VSGWYMQdYohBB38yC3m6MZPdob0+N0fvQnK1S3x4+
-3SY6Avg5qXrIl4tUNRvzX9UR3Q9RpJBddfE2g17hw2aL4bzwrjDxJqL5AoGALVno
-VbvHmG2pp4pZP0uZEy0kJ2yF/rQ6dEDONXjPhgnVN71zl7k7M4P2S86w3MUmlHef
-6Z2PnJdomxTvIBCY9tSsqZIzpvmpHp9dVbb6dvoaz2GmYcRueDRgtYuvJSkB/mwz
-vQuTnuXMS8wt5gzdbhoP0vymUwRs/ZczUJlTQOsCgYBRt8JJFdW1gETZkuW0YTFU
-3pJTBopj8Xd128Z89CNPJCzyUYE0MKbo/lSkPoHJp5+BqoOQ0qVLgqgGpwrb1wE/
-NwPfjn6wnaH3jhIE6MdftTkGxc6WOkYGHWuL4CGu2yt7GvbcZU+MAHVU+I3wE29X
+[... YOUR PRIVATE KEY CONTENT ...]
 NsZM40giRjwq1uMmJKHaDQ==
 -----END PRIVATE KEY-----""",
     "client_email": "rohit-selections@sapient-depot-475407-n7.iam.gserviceaccount.com",
@@ -127,33 +108,6 @@ CATEGORY_SHEETS = {
 }
 
 # ------------------------
-# RETRY DECORATOR (for robustness)
-# ------------------------
-def retry_with_backoff(max_retries=3):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    error_msg = str(e).lower()
-                    if "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
-                        wait_time = (2 ** attempt) + random.uniform(0, 1)
-                        logger.warning(
-                            f"Rate limit hit, attempt {attempt+1}/{max_retries}, "
-                            f"waiting {wait_time:.2f}s"
-                        )
-                        time.sleep(wait_time)
-                        if attempt == max_retries - 1:
-                            raise
-                    else:
-                        raise
-            raise Exception("Max retries exceeded")
-        return wrapper
-    return decorator
-
-# ------------------------
 # HELPERS
 # ------------------------
 def login_required(view_func):
@@ -164,29 +118,35 @@ def login_required(view_func):
         return view_func(*args, **kwargs)
     return wrapper
 
+
 def get_worksheet(name):
     sh = gspread_client.open_by_key(SPREADSHEET_ID)
     return sh.worksheet(name)
+
 
 def list_assignments_from_sheet(sheet_name):
     ws = get_worksheet(sheet_name)
     rows = ws.get_all_values()
     return [row[0].strip() for row in rows[1:] if row and row[0].strip()]
 
+
 def append_user_details_row(values):
     ws = get_worksheet(USER_DETAILS_SHEET)
     ws.append_row(values, value_input_option="RAW")
+
 
 def get_assignment_all(sheet_name, assignment_name):
     ws = get_worksheet(sheet_name)
     rows = ws.get_all_values()
     for row in rows[1:]:
         if row and row[0].strip() == assignment_name:
-            # Prompt Eng, Prompt Hin, Q Eng, Q Hin, Model Eng, Model Hin
             return row[1], row[2], row[3], row[4], row[5], row[6]
     return "", "", "", "", "", ""
 
-@retry_with_backoff(max_retries=3)
+
+# ------------------------
+# GOOGLE DRIVE UPLOAD
+# ------------------------
 def upload_to_drive_safe(file_path: Path, filename: str) -> str:
     media = MediaFileUpload(str(file_path), resumable=False)
     metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
@@ -207,33 +167,27 @@ def upload_to_drive_safe(file_path: Path, filename: str) -> str:
 
     return f"https://drive.google.com/file/d/{created['id']}/view"
 
+
 # ------------------------
-# GEMINI OCR WITH RETRY
+# GEMINI OCR (KEY ROTATION)
 # ------------------------
 def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
-    """Smart failover OCR: Try all Gemini keys one-by-one when 429 or failure occurs."""
-
     last_error = None
 
     with open(file_path, "rb") as f:
         file_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    mime_type = (
-        "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
-    )
-
-    ocr_prompt = (
-        "Extract ALL text from this document/image exactly as written. "
-        "This is a handwritten answer sheet. Preserve structure, paragraphs, formatting. "
-        "If diagrams appear, describe briefly. Output ONLY extracted text."
-    )
+    mime_type = "application/pdf" if is_pdf else (mimetypes.guess_type(file_path)[0] or "image/jpeg")
 
     payload = {
         "contents": [
             {
                 "parts": [
                     {"inline_data": {"mime_type": mime_type, "data": file_data}},
-                    {"text": ocr_prompt},
+                    {"text": (
+                        "Extract ALL text exactly as written. Preserve formatting. "
+                        "If diagrams appear, describe briefly. Output ONLY text."
+                    )}
                 ]
             }
         ]
@@ -249,33 +203,27 @@ def extract_text_with_gemini(file_path: str, is_pdf: bool = False) -> str:
                 f"{GEMINI_MODEL}:generateContent?key={api_key}"
             )
 
-            resp = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=30)
+            resp = requests.post(url, json=payload, timeout=30)
 
             if resp.status_code == 429:
-                logger.warning(f"OCR rate-limited for key {api_key[:6]}..., trying next key.")
+                logger.warning(f"OCR rate-limited for {api_key[:6]}..., trying next key.")
                 continue
 
             resp.raise_for_status()
-
             result = resp.json()
-            text = (
-                result.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-            )
 
-            return text.strip() if text else ""
+            text = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            return text.strip()
 
         except Exception as e:
             last_error = e
             logger.error(f"OCR key {api_key[:6]}... failed: {e}")
-            continue
 
     raise Exception(f"All Gemini OCR keys failed. Last error: {last_error}")
 
+
 # ------------------------
-# GEMINI EVALUATION WITH RETRY
+# GEMINI EVALUATION (KEY ROTATION)
 # ------------------------
 def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, answer_text):
 
@@ -289,15 +237,14 @@ def evaluate_answer_with_gemini(prompt_text, question_text, model_answer_text, a
 === MODEL ANSWER ===
 {model_answer_text}
 
-=== STUDENT ANSWER (OCR EXTRACTED) ===
+=== STUDENT ANSWER ===
 {answer_text}
 
-Provide final evaluation EXACTLY in the required format.
+Provide evaluation EXACTLY in the required format.
 Plain text only.
 """
 
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-
     last_error = None
 
     for api_key in GEMINI_API_KEYS:
@@ -313,27 +260,21 @@ Plain text only.
             resp = requests.post(url, json=payload, timeout=30)
 
             if resp.status_code == 429:
-                logger.warning(f"Evaluation rate-limited for key {api_key[:6]}..., trying next key.")
+                logger.warning(f"Evaluation rate-limited for {api_key[:6]}..., trying next key.")
                 continue
 
             resp.raise_for_status()
-
             result = resp.json()
-            text = (
-                result.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-            )
 
-            return text if text else "Gemini returned empty evaluation."
+            text = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            return text
 
         except Exception as e:
             last_error = e
             logger.error(f"Evaluation key {api_key[:6]}... failed: {e}")
-            continue
 
     raise Exception(f"All Gemini evaluation keys failed. Last error: {last_error}")
+
 
 # ------------------------
 # ROUTES
@@ -347,6 +288,7 @@ def login():
             return redirect("/")
         return render_template("login.html", error="Invalid password.")
     return render_template("login.html")
+
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
@@ -366,11 +308,7 @@ def index():
 
         if selected_assignment:
             p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(sheet_name, selected_assignment)
-
-            if language == "ENG":
-                question_display = q_en
-            else:
-                question_display = q_hi
+            question_display = q_en if language == "ENG" else q_hi
 
         return render_template(
             "upload.html",
@@ -386,9 +324,11 @@ def index():
 
     return render_template("index.html")
 
+
 @app.route("/submit", methods=["POST"])
 @login_required
 def submit_assignment():
+
     name = request.form["name"]
     mobile = request.form["mobile"]
     email = request.form["email"]
@@ -407,7 +347,7 @@ def submit_assignment():
         drive_filename = f"{safe_name}_{datetime.now().strftime('%d-%m-%y_%H-%M-%S')}{os.path.splitext(filename)[1]}"
         drive_link = upload_to_drive_safe(Path(path), drive_filename)
 
-        # Log to Google Sheets
+        # Save in sheet
         append_user_details_row([
             name,
             mobile,
@@ -418,45 +358,38 @@ def submit_assignment():
             datetime.now().strftime("%d-%m-%Y %H:%M:%S")
         ])
 
-        # Get assignment data
+        # Assignment data
         p_en, p_hi, q_en, q_hi, m_en, m_hi = get_assignment_all(
             CATEGORY_SHEETS[category], assignment
         )
 
-        if language == "ENG":
-            prompt = p_en
-            question = q_en
-            model = m_en
-        else:
-            prompt = p_hi
-            question = q_hi
-            model = m_hi
+        prompt = p_en if language == "ENG" else p_hi
+        question = q_en if language == "ENG" else q_hi
+        model = m_en if language == "ENG" else m_hi
 
         # OCR
-        extracted_text = extract_text_with_gemini(
-            path, filename.lower().endswith(".pdf")
-        )
+        extracted_text = extract_text_with_gemini(path, filename.lower().endswith(".pdf"))
         if not extracted_text:
             extracted_text = "[No text extracted]"
 
-        # Evaluate
-        feedback = evaluate_answer_with_gemini(
-            prompt,
-            question,
-            model,
-            extracted_text
-        )
+        # Evaluation
+        feedback = evaluate_answer_with_gemini(prompt, question, model, extracted_text)
 
-        # Store result in session using a task_id
+        # Create task_id
         task_id = f"{int(time.time())}_{safe_name}"
-        session[task_id] = {
+
+        # Save ONLY task_id in session
+        session[task_id] = True
+
+        # Save full data in server memory → FIXES COOKIE OVERFLOW
+        RESULT_STORE[task_id] = {
             "name": name,
             "assignment": assignment,
             "drive_link": drive_link,
             "feedback": feedback
         }
 
-        # Show queued.html for 2 seconds, then redirect to /result/<task_id>
+        # Show queued.html for 2 seconds
         return render_template(
             "queued.html",
             name=name,
@@ -469,31 +402,30 @@ def submit_assignment():
 
     except Exception as e:
         logger.error(f"Error in submit_assignment: {e}")
-        try:
-            os.remove(path)
-        except Exception:
-            pass
-        return f"An error occurred: {str(e)}", 500
+        return f"Error: {str(e)}", 500
 
     finally:
         try:
             if os.path.exists(path):
                 os.remove(path)
-        except Exception:
+        except:
             pass
+
 
 @app.route("/status/<task_id>")
 @login_required
 def check_status(task_id):
-    # Not used by new queued.html, but kept for compatibility
     return jsonify({"status": "completed"})
+
 
 @app.route("/result/<task_id>")
 @login_required
 def show_result(task_id):
-    data = session.get(task_id)
-    if not data:
+
+    if task_id not in RESULT_STORE:
         return "Task not found", 404
+
+    data = RESULT_STORE[task_id]
 
     return render_template(
         "result.html",
@@ -502,6 +434,7 @@ def show_result(task_id):
         drive_link=data["drive_link"],
         feedback=data["feedback"]
     )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
